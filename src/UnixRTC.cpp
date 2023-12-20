@@ -1,8 +1,7 @@
 #include "UnixRTC.h"
 
-#ifdef RTC_DEBUG  //Used for debugging (uses serial port)
-#include "Arduino.h"
-#endif
+#include "Arduino.h"  //Arduino core libraries
+#include "Wire.h"     //Arduino builtin I2C library
 
 UnixRTC::UnixRTC() {}  //Library constructor
 
@@ -33,9 +32,6 @@ uint64_t UnixRTC::readTime() {   //Returns unix time from RTC
   uint8_t year = bcdToDec(Wire.read()) + (temp & 0x80 ? 100 : 0);
   if (afterY2100bug(day, month, year)) {
     if (!Y2100handled) {
-#ifdef RTC_DEBUG
-      Serial.println(F("DEBUG: Handling RTC Y2100 leap-year bug"));
-#endif
       offsetDate(dow, day, month, year);
       writeRawTime(second, minute, hour, dow, day, month, year);  //Updates RTC
     }
@@ -59,6 +55,7 @@ bool UnixRTC::writeTime(uint64_t unix) {
   uint8_t year;
   dateFromUnix(unix, second, minute, hour, dayOfWeek, day, month, year);  //Splits unix time into smaller date parts
   writeRawTime(second, minute, hour, dayOfWeek, day, month, year);        //Writes time to RTC
+  assumeTimeValid();
   return true;
 }
 
@@ -141,4 +138,471 @@ void UnixRTC::dateFromUnix(uint64_t unix, uint8_t& second, uint8_t& minute, uint
   month = mp + (mp < 10 ? 3 : -9);
   y += (month <= 2);
   year = y - 2000;
+}
+
+int8_t UnixRTC::getAgingOffset() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0x10);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  return Wire.read();
+}
+
+void UnixRTC::setAgingOffset(int8_t age = 0) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0x10);
+  Wire.write(age);
+  Wire.endTransmission();
+}
+
+int16_t UnixRTC::getTempInt(bool force = false) {
+  if (force) {
+    Wire.beginTransmission(0x68);
+    Wire.write(0xE);
+    Wire.endTransmission();
+    Wire.requestFrom(0x68, 2);
+    uint8_t oldControl = Wire.read();
+    bool isBusy = Wire.read() & 0x4;
+    if (!isBusy) {
+      Wire.beginTransmission(0x68);
+      Wire.write(0xE);
+      Wire.write(oldControl | 0x20);
+      Wire.endTransmission();
+    }
+    for (int a = 0; a < 30; a++) {  //Timeout after 30 busy checks
+      Wire.beginTransmission(0x68);
+      Wire.write(0xE);
+      Wire.endTransmission();
+      Wire.requestFrom(0x68, 1);
+      if (!(Wire.read() & 0x20)) break;
+      delay(50);
+    }
+  }
+  Wire.beginTransmission(0x68);
+  Wire.write(0x11);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 2);
+  int8_t tempMSB = Wire.read();
+  uint8_t tempLSB = Wire.read() >> 6;
+  int16_t temp = (tempMSB * 4) | tempLSB;
+  return temp;
+}
+
+float UnixRTC::getTemp(bool force = false) {
+  return getTempInt(force) / 4.0;
+}
+
+bool UnixRTC::timeValid() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xF);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  return !(Wire.read() & 0x80);
+}
+
+void UnixRTC::assumeTimeValid() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xF);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t status = Wire.read();
+  if (!(status & 0x80)) {  // Oscillator stopped
+    Wire.beginTransmission(0x68);
+    Wire.write(0xF);
+    Wire.write(status | 0xF);
+    Wire.endTransmission();
+  }
+}
+
+void UnixRTC::enableOscillator(bool enable = true) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xE);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t control = Wire.read();
+  uint8_t newControl = control;
+  if (enable) {
+    newControl |= 0x80;
+  } else {
+    newControl &= 0x7F;
+  }
+  if (newControl != control) {
+    Wire.beginTransmission(0x68);
+    Wire.write(0xE);
+    Wire.write(newControl);
+    Wire.endTransmission();
+  }
+}
+void UnixRTC::disableOscillator() {
+  enableOscillator(false);
+}
+
+bool UnixRTC::output32KHzEnabled() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xF);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  return Wire.read() & 0x8;
+}
+
+void UnixRTC::enable32KHzOut(bool enable = true) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xF);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t status = Wire.read();
+  uint8_t newStatus = status;
+  if (enable) {
+    newStatus |= 0x8;
+  } else {
+    newStatus &= 0x87;
+  }
+  if (newStatus != status) {
+    Wire.beginTransmission(0x68);
+    Wire.write(0xF);
+    Wire.write(newStatus);
+    Wire.endTransmission();
+  }
+}
+void UnixRTC::disable32KHzOut() {
+  enable32KHzOut(false);
+}
+
+uint64_t UnixRTC::getAlarm1Time() {  //This function assumes the alarm was set by this library, for simplicity
+  Wire.beginTransmission(0x68);
+  Wire.write(0x00);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 7);
+  uint8_t second = bcdToDec(Wire.read());
+  uint8_t minute = bcdToDec(Wire.read());
+  uint8_t rawHour = Wire.read() & 0x7F;
+  bool Y2100handled = rawHour & 0x40;  //Has the Y2100 bug already been handled? (Uses the AM/PM flag as memory due to RTC limitations)
+  uint8_t hour = bcdToDec(rawHour & 0x3F);
+  if (Y2100handled) {  //12H time, convert to 24h (Side effect of using the AM/PM flag as memory)
+    bool isPM = rawHour & 0x20;
+    hour = bcdToDec(rawHour & 0x1F);
+    if (hour > 11) hour = 0;
+    if (isPM) hour += 12;
+  }
+  Wire.read();  //DoW not needed
+  uint8_t day = bcdToDec(Wire.read());
+  uint8_t month = Wire.read();           //Gets current month
+  uint8_t year = bcdToDec(Wire.read());  //Gets current year
+  if (month & 0x80) year += 100;
+  month = bcdToDec(month & 0x1F);
+  Wire.beginTransmission(0x68);
+  Wire.write(0x07);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 4);
+  uint8_t almSecond = bcdToDec(Wire.read() & 0x7F);
+  uint8_t almMinute = bcdToDec(Wire.read() & 0x7F);
+  uint8_t almHour = bcdToDec(Wire.read() & 0x3F);
+  uint8_t almDay = bcdToDec(Wire.read() & 0x3F);
+
+  uint64_t now = unixFromDate(second, minute, hour, day, month, year);
+  uint64_t alm = unixFromDate(almSecond, almMinute, almHour, almDay, month, year);
+  if (alm < now) {
+    month++;
+    if (month > 12) {
+      month = 0;
+      year++;
+    }
+    alm = unixFromDate(almSecond, almMinute, almHour, almDay, month, year);
+  }
+  return alm;
+}
+void UnixRTC::setAlarm1Time(uint64_t unix) {
+  uint8_t second;
+  uint8_t minute;
+  uint8_t hour;
+  uint8_t dayOfWeek;  //not used
+  uint8_t day;
+  uint8_t month;  //not used
+  uint8_t year;   //not used
+  dateFromUnix(unix, second, minute, hour, dayOfWeek, day, month, year);
+  Wire.beginTransmission(0x68);
+  Wire.write(0x7);
+  Wire.write(decToBcd(second));
+  Wire.write(decToBcd(minute));
+  Wire.write(decToBcd(hour));
+  Wire.write(decToBcd(day));
+  Wire.endTransmission();
+}
+
+bool UnixRTC::alm1Tripped(bool clearFlag = false) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xF);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t status = Wire.read();
+  bool tripped = status & 0x01;
+  if (clearFlag && tripped) {
+    status &= 0xFE;
+    Wire.beginTransmission(0x68);
+    Wire.write(0xF);
+    Wire.write(status);
+    Wire.endTransmission();
+  }
+  return tripped;
+}
+
+void UnixRTC::clearAlm1() {
+  alm1Tripped(true);
+}
+
+bool UnixRTC::alm1InterrptEnabled() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xE);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  return Wire.read() & 0x01;
+}
+
+void UnixRTC::enableAlm1Interrupt(bool enable = true) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xE);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t control = Wire.read();
+  uint8_t newControl = control;
+  if (enable) {
+    newControl |= 1;
+  } else {
+    newControl &= 0xFE;
+  }
+  if (newControl != control) {
+    Wire.beginTransmission(0x68);
+    Wire.write(0xE);
+    Wire.write(newControl);
+    Wire.endTransmission();
+  }
+}
+
+void UnixRTC::disableAlm1Interrupt() {
+  enableAlm1Interrupt(false);
+}
+
+uint64_t UnixRTC::getAlarm2Time() {  //This function assumes the alarm was set by this library, for simplicity
+  Wire.beginTransmission(0x68);
+  Wire.write(0x00);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 7);
+  uint8_t second = bcdToDec(Wire.read());
+  uint8_t minute = bcdToDec(Wire.read());
+  uint8_t rawHour = Wire.read() & 0x7F;
+  bool Y2100handled = rawHour & 0x40;  //Has the Y2100 bug already been handled? (Uses the AM/PM flag as memory due to RTC limitations)
+  uint8_t hour = bcdToDec(rawHour & 0x3F);
+  if (Y2100handled) {  //12H time, convert to 24h (Side effect of using the AM/PM flag as memory)
+    bool isPM = rawHour & 0x20;
+    hour = bcdToDec(rawHour & 0x1F);
+    if (hour > 11) hour = 0;
+    if (isPM) hour += 12;
+  }
+  Wire.read();  //DoW not needed
+  uint8_t day = bcdToDec(Wire.read());
+  uint8_t month = Wire.read();           //Gets current month
+  uint8_t year = bcdToDec(Wire.read());  //Gets current year
+  if (month & 0x80) year += 100;
+  month = bcdToDec(month & 0x1F);
+  Wire.beginTransmission(0x68);
+  Wire.write(0x0B);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 3);
+  uint8_t almMinute = bcdToDec(Wire.read() & 0x7F);
+  uint8_t almHour = bcdToDec(Wire.read() & 0x3F);
+  uint8_t almDay = bcdToDec(Wire.read() & 0x3F);
+  uint64_t now = unixFromDate(second, minute, hour, day, month, year);
+  uint64_t alm = unixFromDate(0, almMinute, almHour, almDay, month, year);
+  if (alm < now) {
+    month++;
+    if (month > 12) {
+      month = 0;
+      year++;
+    }
+    alm = unixFromDate(0, almMinute, almHour, almDay, month, year);
+  }
+  return alm;
+}
+
+void UnixRTC::setAlarm2Time(uint64_t unix) {
+  uint8_t second;  //not used
+  uint8_t minute;
+  uint8_t hour;
+  uint8_t dayOfWeek;  //not used
+  uint8_t day;
+  uint8_t month;  //not used
+  uint8_t year;   //not used
+  dateFromUnix(unix, second, minute, hour, dayOfWeek, day, month, year);
+  Wire.beginTransmission(0x68);
+  Wire.write(0xB);
+  Wire.write(decToBcd(minute));
+  Wire.write(decToBcd(hour));
+  Wire.write(decToBcd(day));
+  Wire.endTransmission();
+}
+
+bool UnixRTC::alm2Tripped(bool clearFlag = false) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xF);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t status = Wire.read();
+  bool tripped = status & 0x02;
+  if (clearFlag && tripped) {
+    status &= 0xFD;
+    Wire.beginTransmission(0x68);
+    Wire.write(0xF);
+    Wire.write(status);
+    Wire.endTransmission();
+  }
+  return tripped;
+}
+void UnixRTC::clearAlm2() {
+  alm2Tripped(true);
+}
+
+bool UnixRTC::alm2InterrptEnabled() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xE);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  return Wire.read() & 0x02;
+}
+
+void UnixRTC::enableAlm2Interrupt(bool enable = true) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xE);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t control = Wire.read();
+  uint8_t newControl = control;
+  if (enable) {
+    newControl |= 0x02;
+  } else {
+    newControl &= 0xFD;
+  }
+  if (newControl != control) {
+    Wire.beginTransmission(0x68);
+    Wire.write(0xE);
+    Wire.write(newControl);
+    Wire.endTransmission();
+  }
+}
+
+void UnixRTC::disableAlm2Interrupt() {
+  enableAlm2Interrupt(false);
+}
+
+uint16_t UnixRTC::getSQWFreq() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xE);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t rawFreq = (Wire.read() >> 3) & 0x3;
+  switch (rawFreq) {
+    case 0:
+      return 1;
+    case 1:
+      return 1024;
+    case 2:
+      return 4096;
+    default:
+      return 8192;
+  }
+}
+
+bool UnixRTC::setSQWFreq(uint16_t freq) {
+  uint8_t freqBits = 0;
+  switch (freq) {
+    case 1:
+      freqBits = 0;
+      break;
+    case 1024:
+      freqBits = 1;
+      break;
+    case 4096:
+      freqBits = 2;
+      break;
+    case 8192:
+      freqBits = 3;
+      break;
+    default:
+      return false;
+  }
+  freqBits <<= 3;
+  Wire.beginTransmission(0x68);
+  Wire.write(0x0E);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t oldControl = Wire.read();
+  freqBits |= (oldControl & 0xE7);
+  if (freqBits != oldControl) {
+    Wire.beginTransmission(0x68);
+    Wire.write(0x0E);
+    Wire.write(freqBits);
+    Wire.endTransmission();
+  }
+  return true;
+}
+
+bool UnixRTC::batteryBackedSQWEnabled() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0x0E);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  return Wire.read() & 0x40;
+}
+
+void UnixRTC::enableBatteryBackedSQW(bool enable = true) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xE);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t control = Wire.read();
+  uint8_t newControl = control;
+  if (enable) {
+    newControl |= 0x40;
+  } else {
+    newControl &= 0xBF;
+  }
+  if (newControl != control) {
+    Wire.beginTransmission(0x68);
+    Wire.write(0xE);
+    Wire.write(newControl);
+    Wire.endTransmission();
+  }
+}
+void UnixRTC::disableBatteryBackedSQW() {
+  enableBatteryBackedSQW(false);
+}
+
+bool UnixRTC::SQWEnabled() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0x0E);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  return Wire.read() & 0x4;
+}
+
+void UnixRTC::enableSQW(bool enable = true) {
+  Wire.beginTransmission(0x68);
+  Wire.write(0xE);
+  Wire.endTransmission();
+  Wire.requestFrom(0x68, 1);
+  uint8_t control = Wire.read();
+  uint8_t newControl = control;
+  if (enable) {
+    newControl |= 0x4;
+  } else {
+    newControl &= 0xFB;
+  }
+  if (newControl != control) {
+    Wire.beginTransmission(0x68);
+    Wire.write(0xE);
+    Wire.write(newControl);
+    Wire.endTransmission();
+  }
+}
+void UnixRTC::disableSQW() {
+  enableSQW(false);
 }
