@@ -37,14 +37,53 @@
 #ifndef UnixRTC_H
 #define UnixRTC_H
 
-#include "Wire.h"  //Arduino builtin I2C library
+#include "Arduino.h"  //Arduino core libraries
+#include "Wire.h"     //Arduino builtin I2C library
+
+#define RTC_1Hz 1
+#define RTC_1KHz 1024
+#define RTC_4KHz 4096
+#define RTC_8KHz 8192
 
 class UnixRTC {  //RTC class
 public:
-  UnixRTC(void);                  //Constructor
-  void begin();                   //Initializes I2C bus
-  uint64_t readTime();            //Reads unix time from RTC (with Y2100 correction)
-  bool writeTime(uint64_t unix);  //Writes unix time to RTC
+  UnixRTC(void);                                    //Constructor
+  void begin();                                     //Initializes I2C bus
+  uint64_t readTime();                              //Reads unix time from RTC (with Y2100 correction)
+  bool writeTime(uint64_t unix);                    //Writes unix time to RTC
+  float getTemp(bool force = false);                //Returns the RTC temperature as a float (in deg C)
+  int16_t getTempInt(bool force = false);           //Returns the RTC temperature as an int (in x4 deg C)
+  int8_t getAgingOffset();                          //Gets current crystal aging offset
+  void setAgingOffset(int8_t age = 0);              //Sets crystal aging offset
+  bool timeValid();                                 //Returns true if the time is valid
+  void assumeTimeValid();                           //Sets the Oscillator stop flag to 0 (used when setting time)
+  void enableOscillator(bool enable = true);        //Enables or disables the oscillator when on battery backup
+  void disableOscillator();                         //Same as enableOscillator(false);
+  bool output32KHzEnabled();                        //Returns true if the 32KHz output is enabled
+  void enable32KHzOut(bool enable = true);          //Enables or disables the 32KHz output
+  void disable32KHzOut();                           //Same as enable32KHzOut(false);
+  uint64_t getAlarm1Time();                         //Gets the unix time at which Alarm 1 will trip
+  void setAlarm1Time(uint64_t unix);                //Changes the time at which Alarm 1 will trip
+  bool alm1Tripped(bool clearFlag = false);         //Checks if the flag for Alarm 1 has tripped
+  void clearAlm1();                                 //Clears the alarm flag, same as alm1Tripped(true);
+  bool alm1InterrptEnabled();                       //Checks if the interrupt for alarm 1 is enabled
+  void enableAlm1Interrupt(bool enable = true);     //Enables the alarm 1 interrupt
+  void disableAlm1Interrupt();                      //Disables the alarm 1 interrupt
+  uint64_t getAlarm2Time();                         //Gets the unix time at which Alarm 2 will trip
+  void setAlarm2Time(uint64_t unix);                //Changes the time at which Alarm 2 will trip
+  bool alm2Tripped(bool clearFlag = false);         //Checks if the flag for Alarm 2 has tripped
+  void clearAlm2();                                 //Clears the alarm flag, same as alm2Tripped(true);
+  bool alm2InterrptEnabled();                       //Checks if the interrupt for alarm 2 is enabled
+  void enableAlm2Interrupt(bool enable = true);     //Enables the alarm 2 interrupt
+  void disableAlm2Interrupt();                      //Disables the alarm 2 interrupt
+  uint16_t getSQWFreq();                            //Gets the current SQW frequency in Hz
+  bool setSQWFreq(uint16_t freq);                   //Sets the SQW frequency in Hz, returns true on success
+  bool batteryBackedSQWEnabled();                   //Returns true if the BBSQW function is enabled
+  void enableBatteryBackedSQW(bool enable = true);  //Enables the BBSQW function
+  void disableBatteryBackedSQW();                   //Same as enableBatteryBackedSQW(false);
+  bool SQWEnabled();                                //Checks the SQW/INT mode (True = SQW, False = INT)
+  void enableSQW(bool enable = true);               //Enables the SQW output
+  void disableSQW();                                //Same as enableSQW(false);
 private:
   uint8_t decToBcd(uint8_t i);                                                                                                                         //Converts decimal to BCD
   uint8_t bcdToDec(uint8_t i);                                                                                                                         //Converts BCD to decimal
