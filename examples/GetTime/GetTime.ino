@@ -23,9 +23,22 @@ void setup() {
 void loop() {
   uint64_t unixTime = rtc.getTime();
   Serial.print("Current unix timestamp: ");
-  uint32_t upper = unixTime/1000000;
-  uint32_t lower = unixTime%1000000;
-  Serial.print(upper);
-  Serial.println(lower,6);
+  print64bit(unixTime);
+  Serial.println();
   delay(1000);
+}
+
+void print64bit(uint64_t number) {
+  if (number == 0) {
+    Serial.print('0');
+    return;
+  }
+  int8_t buffer[20];
+  uint8_t len = 0;
+  while (number > 0) {
+    uint64_t t = number / 10;
+    buffer[len++] = number - t * 10 + '0';
+    number = t;
+  }
+  for (; len > 0; len--) Serial.print((char)buffer[len - 1]);
 }
