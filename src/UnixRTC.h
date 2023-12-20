@@ -49,14 +49,15 @@ class UnixRTC {  //RTC class
 public:
   UnixRTC(void);                                    //Constructor
   void begin();                                     //Initializes I2C bus
-  uint64_t readTime();                              //Reads unix time from RTC (with Y2100 correction)
-  bool writeTime(uint64_t unix);                    //Writes unix time to RTC
+  uint64_t getTime();                              //Reads unix time from RTC (with Y2100 correction)
+  bool setTime(uint64_t unix);                      //Writes unix time to RTC
   float getTemp(bool force = false);                //Returns the RTC temperature as a float (in deg C)
   int16_t getTempInt(bool force = false);           //Returns the RTC temperature as an int (in x4 deg C)
   int8_t getAgingOffset();                          //Gets current crystal aging offset
   void setAgingOffset(int8_t age = 0);              //Sets crystal aging offset
   bool timeValid();                                 //Returns true if the time is valid
   void assumeTimeValid();                           //Sets the Oscillator stop flag to 0 (used when setting time)
+  bool oscillatorEnabled();                         //Checks if the main oscillator is enabled
   void enableOscillator(bool enable = true);        //Enables or disables the oscillator when on battery backup
   void disableOscillator();                         //Same as enableOscillator(false);
   bool output32KHzEnabled();                        //Returns true if the 32KHz output is enabled
