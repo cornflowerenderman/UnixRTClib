@@ -118,7 +118,7 @@ uint64_t UnixRTC::unixFromDate(uint8_t second, uint8_t minute, uint8_t hour, uin
   uint16_t y = year + 30 + my;
   uint16_t dm = 0;
   for (int i = 0; i < month - 1; i++) dm += (i < 7) ? ((i == 1) ? 28 : ((i & 1) ? 30 : 31)) : ((i & 1) ? 31 : 30);
-  return ((((day - 1 + dm + ((y + 1) / 4) - ((y + 69) / 100) + ((y + 369) / 400)) + (365 UL * (y - my))) * (uint32_t)24 + hour) * (uint32_t)60 + minute) * (uint64_t)60 + second;
+  return ((((day - 1 + dm + ((y + 1) / 4) - ((y + 69) / 100) + ((y + 369) / 400)) + (365UL * (y - my))) * (uint32_t)24 + hour) * (uint32_t)60 + minute) * (uint64_t)60 + second;
 }
 
 void UnixRTC::dateFromUnix(uint64_t unix, uint8_t& second, uint8_t& minute, uint8_t& hour, uint8_t& dayOfWeek, uint8_t& day, uint8_t& month, uint8_t& year) {  //Internal conversion for unix time
@@ -130,8 +130,8 @@ void UnixRTC::dateFromUnix(uint64_t unix, uint8_t& second, uint8_t& minute, uint
   t /= 24;
   dayOfWeek = (t + 4) % 7;
   uint32_t z = t + 719468;
-  uint8_t era = z / 146097 ul;
-  uint32_t doe = z - era * 146097 ul;
+  uint8_t era = z / 146097ul;
+  uint32_t doe = z - era * 146097ul;
   uint32_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
   uint32_t y = yoe + era * 400;
   uint32_t doy = doe - (yoe * 365 + yoe / 4 - yoe / 100);
