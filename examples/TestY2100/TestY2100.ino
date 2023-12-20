@@ -9,16 +9,20 @@ void setup() {
   rtc.setTime(1777777777);  // May 03 2026 03:09:37
   delay(3000);
   print64bit(rtc.getTime());
+  Serial.println();
   rtc.setTime(4102444799);  // 31st dec 2099 23:59:59
   delay(3000);
   print64bit(rtc.getTime());
+  Serial.println();
   rtc.setTime(4107542399);  // Feb 28th Y2100 23:59:59
   delay(3000);
   print64bit(rtc.getTime());
+  Serial.println();
 }
 
 void loop() {
   print64bit(rtc.getTime());
+  Serial.println();
   delay(5000);
 }
 
