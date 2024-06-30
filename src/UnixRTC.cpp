@@ -150,14 +150,14 @@ int8_t UnixRTC::getAgingOffset() {
   return Wire.read();
 }
 
-void UnixRTC::setAgingOffset(int8_t age = 0) {
+void UnixRTC::setAgingOffset(int8_t age) {
   Wire.beginTransmission(0x68);
   Wire.write(0x10);
   Wire.write(age);
   Wire.endTransmission();
 }
 
-int16_t UnixRTC::getTempInt(bool force = false) {
+int16_t UnixRTC::getTempInt(bool force) {
   if (force) {
     Wire.beginTransmission(0x68);
     Wire.write(0xE);
@@ -190,7 +190,7 @@ int16_t UnixRTC::getTempInt(bool force = false) {
   return temp;
 }
 
-float UnixRTC::getTemp(bool force = false) {
+float UnixRTC::getTemp(bool force) {
   return getTempInt(force) / 4.0;
 }
 
@@ -224,7 +224,7 @@ bool UnixRTC::oscillatorEnabled() {
   return Wire.read() & 0x80;
 }
 
-void UnixRTC::enableOscillator(bool enable = true) {
+void UnixRTC::enableOscillator(bool enable) {
   Wire.beginTransmission(0x68);
   Wire.write(0xE);
   Wire.endTransmission();
@@ -255,7 +255,7 @@ bool UnixRTC::output32KHzEnabled() {
   return Wire.read() & 0x8;
 }
 
-void UnixRTC::enable32KHzOut(bool enable = true) {
+void UnixRTC::enable32KHzOut(bool enable) {
   Wire.beginTransmission(0x68);
   Wire.write(0xF);
   Wire.endTransmission();
@@ -339,7 +339,7 @@ void UnixRTC::setAlarm1Time(uint64_t unix) {
   Wire.endTransmission();
 }
 
-bool UnixRTC::alm1Tripped(bool clearFlag = false) {
+bool UnixRTC::alm1Tripped(bool clearFlag) {
   Wire.beginTransmission(0x68);
   Wire.write(0xF);
   Wire.endTransmission();
@@ -368,7 +368,7 @@ bool UnixRTC::alm1InterrptEnabled() {
   return Wire.read() & 0x01;
 }
 
-void UnixRTC::enableAlm1Interrupt(bool enable = true) {
+void UnixRTC::enableAlm1Interrupt(bool enable) {
   Wire.beginTransmission(0x68);
   Wire.write(0xE);
   Wire.endTransmission();
@@ -451,7 +451,7 @@ void UnixRTC::setAlarm2Time(uint64_t unix) {
   Wire.endTransmission();
 }
 
-bool UnixRTC::alm2Tripped(bool clearFlag = false) {
+bool UnixRTC::alm2Tripped(bool clearFlag) {
   Wire.beginTransmission(0x68);
   Wire.write(0xF);
   Wire.endTransmission();
@@ -479,7 +479,7 @@ bool UnixRTC::alm2InterrptEnabled() {
   return Wire.read() & 0x02;
 }
 
-void UnixRTC::enableAlm2Interrupt(bool enable = true) {
+void UnixRTC::enableAlm2Interrupt(bool enable) {
   Wire.beginTransmission(0x68);
   Wire.write(0xE);
   Wire.endTransmission();
@@ -563,7 +563,7 @@ bool UnixRTC::batteryBackedSQWEnabled() {
   return Wire.read() & 0x40;
 }
 
-void UnixRTC::enableBatteryBackedSQW(bool enable = true) {
+void UnixRTC::enableBatteryBackedSQW(bool enable) {
   Wire.beginTransmission(0x68);
   Wire.write(0xE);
   Wire.endTransmission();
@@ -594,7 +594,7 @@ bool UnixRTC::SQWEnabled() {
   return Wire.read() & 0x4;
 }
 
-void UnixRTC::enableSQW(bool enable = true) {
+void UnixRTC::enableSQW(bool enable) {
   Wire.beginTransmission(0x68);
   Wire.write(0xE);
   Wire.endTransmission();
